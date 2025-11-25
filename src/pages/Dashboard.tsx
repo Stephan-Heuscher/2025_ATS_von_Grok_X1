@@ -14,18 +14,34 @@ const Dashboard = () => {
   const [issues, setIssues] = useState<Issue[]>([])
 
   useEffect(() => {
-    // Simulate API call with mock data for local dev
-    const mockIssues: Issue[] = [
-      { id: '1', title: 'Fix login bug', description: 'Users cannot log in', priority: 'High', status: 'ToDo' },
-      { id: '2', title: 'Add dark mode', description: 'Implement dark theme', priority: 'Med', status: 'In Progress' },
-      { id: '3', title: 'Update docs', description: 'Update user documentation', priority: 'Low', status: 'Done' },
-    ]
-    setIssues(mockIssues)
+    // Fetch issues from API
+    fetch('/api/issues')
+      .then(res => res.json())
+      .then(setIssues)
+      .catch(() => {
+        // Fallback to mock data if API fails
+        const mockIssues: Issue[] = [
+          { id: '1', title: 'Fix login bug', description: 'Users cannot log in', priority: 'High', status: 'ToDo' },
+          { id: '2', title: 'Add dark mode', description: 'Implement dark theme', priority: 'Med', status: 'In Progress' },
+          { id: '3', title: 'Update docs', description: 'Update user documentation', priority: 'Low', status: 'Done' },
+        ]
+        setIssues(mockIssues)
+      })
   }, [])
 
   const handleCreateIssue = (newIssue: Omit<Issue, 'id'>) => {
-    const issue: Issue = { ...newIssue, id: Date.now().toString() }
-    setIssues(prev => [...prev, issue])
+    fetch('/api/issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newIssue)
+    })
+      .then(res => res.json())
+      .then(issue => setIssues(prev => [...prev, issue]))
+      .catch(() => {
+        // Fallback: simulate locally
+        const issue: Issue = { ...newIssue, id: Date.now().toString() }
+        setIssues(prev => [...prev, issue])
+      })
   }
 
   const groupedIssues = {
