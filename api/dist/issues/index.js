@@ -9,25 +9,26 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const cosmos_1 = require("@azure/cosmos");
-const cosmosClient = new cosmos_1.CosmosClient(process.env.COSMOS_CONNECTION_STRING);
-const database = cosmosClient.database("IssueTrackerDB");
-const container = database.container("Issues");
 const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
+        const mockIssues = [
+            { id: '1', title: 'Fix login bug', description: 'Users cannot log in', priority: 'High', status: 'ToDo' },
+            { id: '2', title: 'Add dark mode', description: 'Implement dark theme', priority: 'Med', status: 'In Progress' },
+            { id: '3', title: 'Update docs', description: 'Update user documentation', priority: 'Low', status: 'Done' },
+        ];
         if (req.method === "GET") {
-            const { resources: issues } = yield container.items.readAll().fetchAll();
             context.res = {
                 status: 200,
-                body: issues
+                body: mockIssues
             };
         }
         else if (req.method === "POST") {
-            const issue = req.body;
-            const { resource: createdItem } = yield container.items.create(issue);
+            const newIssue = req.body;
+            // Simulate creating
+            const created = Object.assign(Object.assign({}, newIssue), { id: Date.now().toString() });
             context.res = {
                 status: 201,
-                body: createdItem
+                body: created
             };
         }
         else {
