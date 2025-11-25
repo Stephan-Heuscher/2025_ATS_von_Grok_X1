@@ -21,6 +21,8 @@ function decodeKey(rawKey: string) {
 
 function buildStringToSign(verb: string, resourceType: string, resourceId: string, date: string) {
   // stringToSign format required by Cosmos DB: verb + '\n' + resourceType + '\n' + resourceId + '\n' + date.toLowerCase() + '\n' + '\n'
+  // The service may normalize resource ids / paths to lower-case when signing,
+  // so use a lower-cased resourceId in the canonical string to avoid mismatches.
   return `${verb.toLowerCase()}\n${resourceType.toLowerCase()}\n${resourceId}\n${date.toLowerCase()}\n\n`
 }
 
@@ -43,9 +45,20 @@ async function fetchCosmos(path: string, verb: 'GET'|'POST'|'PUT'|'DELETE', body
   const { endpoint, key } = getAccountConfig()
   const date = new Date().toUTCString()
   const resourceType = opts?.resourceType ?? 'docs'
-  const resourceId = opts?.resourceId ?? path.replace(/^\/+/,'')
+  // derive a raw resourceId (trim any leading slashes)
+  const resourceIdRaw = (opts?.resourceId ?? path.replace(/^\/+/,'')).replace(/\/+$/,'')
 
-  const token = authToken(verb, resourceType, resourceId, date, key)
+  // For doc-level ops (DELETE/PUT on a specific document), the service often
+  // uses the document's resource id (last path segment) when building the
+  // auth signature. For create (POST on docs) or queries, the collection-level
+  // resourceId is used. Compute a canonical resourceId used for signing.
+  let resourceIdForSigning = resourceIdRaw
+  if ((verb === 'DELETE' || verb === 'PUT') && /\/docs\/[^\/]+$/.test(resourceIdRaw)) {
+    const parts = resourceIdRaw.split('/').filter(Boolean)
+    resourceIdForSigning = parts.length ? parts[parts.length - 1].toLowerCase() : resourceIdRaw
+  }
+
+  const token = authToken(verb, resourceType, resourceIdForSigning, date, key)
 
   const headers: Record<string,string> = {
     'Authorization': token,
@@ -176,9 +189,11 @@ export async function deleteIssueById(id: string) {
   // Find the doc by id to get its _self link
   const found = await getIssueById(id)
   if (!found) return null
-  // prefer using the resource RID to build a stable docs path
-  // _rid is stable and avoids depending on the server's _self formatting
-  let self = found._rid ? `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${found._rid}` : found._self
+  // Prefer the server-supplied _self path (resource-relative, using rids)
+  // which is the most reliable addressable path. If _self is missing, fall
+  // back to using the document's _rid to construct a resource path using
+  // the database/container names.
+  let self = found._self ?? (found._rid ? `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${found._rid}` : null)
   if (!self) {
     // fallback to constructing docs path using id — delete may require resource rid; try doc id path
     self = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${id}`
@@ -190,8 +205,18 @@ export async function deleteIssueById(id: string) {
     self = self.replace(/^https?:\/\/[^\/]+\/?/, '/')
   }
 
-  // perform delete. Provide partition key so Cosmos can resolve the partition efficiently.
-  const res = await fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}`, partitionKey: String(id) })
+  // perform delete. For correct signing, prefer passing the document's resource id
+  // (rid) itself — the server commonly signs doc-level operations using the
+  // document rid. Extract it either from found._rid or from the tail of the
+  // resource path.
+  let docRid: string | undefined = undefined
+  if (found._rid) docRid = found._rid
+  else if (typeof self === 'string') {
+    const parts = self.split('/').filter(Boolean)
+    docRid = parts.length ? parts[parts.length - 1] : undefined
+  }
+
+  const res = await fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: docRid, partitionKey: String(id) })
   return res
 }
 
