@@ -255,7 +255,9 @@ export async function deleteIssueById(id: string) {
 
   try {
     const res = await fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: docRid, partitionKey: String(id) })
-    return res
+    // fetchCosmos returns null for successful operations that return no body
+    // (DELETE commonly returns empty body). Treat an OK delete as truthy.
+    return res ?? true
   } catch (err: any) {
     // If the document isn't found by the rid path (404), try a fallback
     // delete using the doc id path (dbs/<db>/colls/<container>/docs/<id>). Some
@@ -267,7 +269,7 @@ export async function deleteIssueById(id: string) {
       const fallbackPath = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${id}`
       try {
         const fallback = await fetchCosmos(fallbackPath, 'DELETE', undefined, { resourceType: 'docs', resourceId: id, partitionKey: String(id) })
-        return fallback
+        return fallback ?? true
       } catch (err2: any) {
         // bubble up the original error if fallback also fails
         throw err2 || err
