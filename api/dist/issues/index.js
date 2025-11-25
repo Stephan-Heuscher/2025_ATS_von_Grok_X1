@@ -9,40 +9,34 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.issues = issues;
-const functions_1 = require("@azure/functions");
 const cosmos_1 = require("@azure/cosmos");
 const cosmosClient = new cosmos_1.CosmosClient(process.env.COSMOS_CONNECTION_STRING);
 const database = cosmosClient.database("IssueTrackerDB");
 const container = database.container("Issues");
-function issues(req, context) {
+const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
         if (req.method === "GET") {
             const { resources: issues } = yield container.items.readAll().fetchAll();
-            return {
+            context.res = {
                 status: 200,
-                jsonBody: issues
+                body: issues
             };
         }
         else if (req.method === "POST") {
-            const issue = yield req.json();
+            const issue = req.body;
             const { resource: createdItem } = yield container.items.create(issue);
-            return {
+            context.res = {
                 status: 201,
-                jsonBody: createdItem
+                body: createdItem
             };
         }
         else {
-            return {
+            context.res = {
                 status: 405,
                 body: "Method not allowed"
             };
         }
     });
-}
-functions_1.app.http('issues', {
-    methods: ['GET', 'POST'],
-    authLevel: 'anonymous',
-    handler: issues
-});
+};
+exports.default = httpTrigger;
 //# sourceMappingURL=index.js.map

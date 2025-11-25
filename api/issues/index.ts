@@ -1,34 +1,30 @@
-import { app, HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions"
+import { AzureFunction, Context, HttpRequest } from "@azure/functions"
 import { CosmosClient } from "@azure/cosmos"
 
 const cosmosClient = new CosmosClient(process.env.COSMOS_CONNECTION_STRING!)
 const database = cosmosClient.database("IssueTrackerDB")
 const container = database.container("Issues")
 
-export async function issues(req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+const httpTrigger: AzureFunction = async function (context: Context, req: HttpRequest): Promise<void> {
     if (req.method === "GET") {
         const { resources: issues } = await container.items.readAll().fetchAll()
-        return {
+        context.res = {
             status: 200,
-            jsonBody: issues
+            body: issues
         }
     } else if (req.method === "POST") {
-        const issue = await req.json()
+        const issue = req.body
         const { resource: createdItem } = await container.items.create(issue)
-        return {
+        context.res = {
             status: 201,
-            jsonBody: createdItem
+            body: createdItem
         }
     } else {
-        return {
+        context.res = {
             status: 405,
             body: "Method not allowed"
         }
     }
 }
 
-app.http('issues', {
-    methods: ['GET', 'POST'],
-    authLevel: 'anonymous',
-    handler: issues
-})
+export default httpTrigger
