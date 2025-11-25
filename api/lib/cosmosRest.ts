@@ -179,8 +179,9 @@ export async function queryIssues(filter: { status?: string | null, limit?: numb
     params.push({ name: '@status', value: filter.status })
   }
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
-  // OFFSET across partitions forces an ORDER BY — to avoid cross-partition gateway errors, support only LIMIT
-  const sql = `SELECT * FROM c ${whereClause} LIMIT ${limit}`
+  // OFFSET across partitions forces an ORDER BY — to avoid cross-partition gateway errors, support only a TOP-style limit
+  // Cosmos SQL uses TOP to limit results across partitions without requiring ORDER BY.
+  const sql = `SELECT TOP ${limit} * FROM c ${whereClause}`
   const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`
   const body = { query: sql, parameters: params }
   const result = await fetchCosmos(path, 'POST', body, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` })
