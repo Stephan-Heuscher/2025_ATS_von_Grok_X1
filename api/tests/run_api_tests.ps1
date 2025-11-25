@@ -9,7 +9,11 @@ Usage:
 This will create an issue, update it (PUT / upsert), fetch, and delete it.
 #>
 
-$baseUrl = $env:API_BASEURL -or "https://agreeable-stone-0a4c73503.3.azurestaticapps.net/api"
+if ($env:API_BASEURL -and $env:API_BASEURL.Trim()) {
+  $baseUrl = $env:API_BASEURL
+} else {
+  $baseUrl = "https://agreeable-stone-0a4c73503.3.azurestaticapps.net/api"
+}
 Write-Host "Testing API at $baseUrl"
 
 $id = [string]::Concat((Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss'), (Get-Random -Maximum 9999))

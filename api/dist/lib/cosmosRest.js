@@ -85,7 +85,19 @@ function fetchCosmos(path, verb, body, opts) {
             headers['x-ms-documentdb-query-enablecrosspartition'] = 'true';
             headers['Content-Type'] = 'application/query+json';
         }
-        const url = `${endpoint}${path}`;
+        // Support either a resource-relative path (eg. /dbs/... or dbs/...) or a full URL
+        let url;
+        if (/^https?:\/\//i.test(path)) {
+            // Normalize paths where some server responses return an absolute URL but
+            // accidentally omit the slash after the port part, e.g. https://host:443dbs/...
+            let normalized = path;
+            normalized = normalized.replace(/^(https?:\/\/[^\/]+:\d+)(dbs\/)/i, '$1/$2');
+            url = normalized;
+        }
+        else {
+            // ensure single slash between endpoint and resource path
+            url = `${endpoint.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
+        }
         const res = yield fetch(url, { method: verb, headers, body: body ? JSON.stringify(body) : undefined });
         if (!res.ok) {
             const text = yield res.text();
@@ -190,14 +202,21 @@ function deleteIssueById(id) {
         const found = yield getIssueById(id);
         if (!found)
             return null;
-        // _self contains a resource-relative path like dbs/<rid>/colls/<rid>/docs/<rid>/
-        let self = found._self;
+        // prefer using the resource RID to build a stable docs path
+        // _rid is stable and avoids depending on the server's _self formatting
+        let self = found._rid ? `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${found._rid}` : found._self;
         if (!self) {
             // fallback to constructing docs path using id — delete may require resource rid; try doc id path
             self = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${id}`;
         }
-        // perform delete
-        const res = yield fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` });
+        // Normalize any absolute URL returned in _self to a resource-relative path
+        // (some Cosmos responses include either absolute or resource-relative values).
+        // Convert e.g. https://host:443dbs/... or https://host:443/dbs/... -> /dbs/...
+        if (typeof self === 'string' && /^https?:\/\//i.test(self)) {
+            self = self.replace(/^https?:\/\/[^\/]+\/?/, '/');
+        }
+        // perform delete. Provide partition key so Cosmos can resolve the partition efficiently.
+        const res = yield fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}`, partitionKey: String(id) });
         return res;
     });
 }
