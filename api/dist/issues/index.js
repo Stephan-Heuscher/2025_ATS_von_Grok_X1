@@ -9,25 +9,16 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const cosmos_1 = require("@azure/cosmos");
-// Read connection string from the deployment setting (set by SWA in the portal or via az)
-const connectionString = process.env.COSMOS_CONNECTION_STRING;
-const client = connectionString ? new cosmos_1.CosmosClient(connectionString) : null;
-const database = client ? client.database('IssueTrackerDB') : null;
-const container = database ? database.container('Issues') : null;
+const cosmosRest_1 = require("../lib/cosmosRest");
 const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b;
         try {
             if (req.method === 'GET') {
-                if (!container)
-                    throw new Error('Cosmos DB not configured');
-                const { resources: issues } = yield container.items.readAll().fetchAll();
+                const issues = yield cosmosRest_1.default.listIssues();
                 context.res = { status: 200, body: issues };
             }
             else if (req.method === 'POST') {
-                if (!container)
-                    throw new Error('Cosmos DB not configured');
                 // Normalize body — some runtimes supply a rawBody string/stream
                 let issue = req.body;
                 if (!issue || typeof issue !== 'object') {
@@ -40,7 +31,7 @@ const httpTrigger = function (context, req) {
                 }
                 if (!(issue === null || issue === void 0 ? void 0 : issue.id))
                     issue.id = Date.now().toString();
-                const { resource: created } = yield container.items.create(issue);
+                const created = yield cosmosRest_1.default.createIssue(issue);
                 context.res = { status: 201, body: created };
             }
             else {
