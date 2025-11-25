@@ -41,12 +41,13 @@ async function run() {
 
   // DELETE
   const delRes = await fetch(`${baseUrl}/issues/${id}`, { method: 'DELETE' })
-  if (![200,204].includes(delRes.status)) exitFailure(`DELETE failed: ${delRes.status}`)
+  const delText = await delRes.text().catch(() => '')
+  if (![200,204].includes(delRes.status)) exitFailure(`DELETE failed: ${delRes.status} - ${delText}`)
   console.log('DELETE OK')
 
   // Ensure it's gone
   const getAgain = await fetch(`${baseUrl}/issues/${id}`)
-  if (getAgain.status !== 404) exitFailure(`Item still present after delete: ${getAgain.status}`)
+  if (getAgain.status !== 404) exitFailure(`Item still present after delete: ${getAgain.status} - ${await getAgain.text().catch(()=>'')}`)
   console.log('Verification OK — item removed')
 
   console.log('All integration tests passed')
