@@ -11,6 +11,10 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listIssues = listIssues;
 exports.createIssue = createIssue;
+exports.getIssueById = getIssueById;
+exports.queryIssues = queryIssues;
+exports.upsertIssue = upsertIssue;
+exports.deleteIssueById = deleteIssueById;
 const crypto = require("crypto");
 const defaultApiVersion = '2018-12-31';
 function parseConnectionString(conn) {
@@ -116,5 +120,65 @@ function createIssue(issue) {
         return res;
     });
 }
-exports.default = { listIssues, createIssue };
+function getIssueById(id) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b, _c;
+        if (!id)
+            return null;
+        const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`;
+        const body = { query: 'SELECT * FROM c WHERE c.id = @id', parameters: [{ name: '@id', value: id }] };
+        const result = yield fetchCosmos(path, 'POST', body, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` });
+        const docs = (_b = (_a = result.Documents) !== null && _a !== void 0 ? _a : result.resources) !== null && _b !== void 0 ? _b : [];
+        return (_c = docs[0]) !== null && _c !== void 0 ? _c : null;
+    });
+}
+function queryIssues(filter) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b;
+        // Build SQL: SELECT * FROM c WHERE ... ORDER BY c._ts DESC OFFSET x LIMIT y
+        const where = [];
+        const params = [];
+        if (filter === null || filter === void 0 ? void 0 : filter.status) {
+            where.push('c.status = @status');
+            params.push({ name: '@status', value: filter.status });
+        }
+        const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        const offset = (filter === null || filter === void 0 ? void 0 : filter.offset) && Number.isInteger(filter.offset) ? filter.offset : 0;
+        const limit = (filter === null || filter === void 0 ? void 0 : filter.limit) && Number.isInteger(filter.limit) ? filter.limit : 100;
+        const sql = `SELECT * FROM c ${whereClause} ORDER BY c._ts DESC OFFSET ${offset} LIMIT ${limit}`;
+        const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`;
+        const body = { query: sql, parameters: params };
+        const result = yield fetchCosmos(path, 'POST', body, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` });
+        return (_b = (_a = result.Documents) !== null && _a !== void 0 ? _a : result.resources) !== null && _b !== void 0 ? _b : [];
+    });
+}
+function upsertIssue(issue) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a;
+        // Upsert using POST + x-ms-documentdb-is-upsert header handled by fetchCosmos
+        const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`;
+        // ensure partitionKey header is passed in options
+        const res = yield fetchCosmos(path, 'POST', issue, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}`, partitionKey: String(issue.id) });
+        // For our helper fetchCosmos, POST will create or upsert depending on headers - we rely on server behaviour
+        return (_a = res.resource) !== null && _a !== void 0 ? _a : res;
+    });
+}
+function deleteIssueById(id) {
+    return __awaiter(this, void 0, void 0, function* () {
+        // Find the doc by id to get its _self link
+        const found = yield getIssueById(id);
+        if (!found)
+            return null;
+        // _self contains a resource-relative path like dbs/<rid>/colls/<rid>/docs/<rid>/
+        let self = found._self;
+        if (!self) {
+            // fallback to constructing docs path using id — delete may require resource rid; try doc id path
+            self = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${id}`;
+        }
+        // perform delete
+        const res = yield fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` });
+        return res;
+    });
+}
+exports.default = { listIssues, createIssue, getIssueById, queryIssues, upsertIssue, deleteIssueById };
 //# sourceMappingURL=cosmosRest.js.map

@@ -105,4 +105,55 @@ export async function createIssue(issue: any) {
   return res
 }
 
-export default { listIssues, createIssue }
+export async function getIssueById(id: string) {
+  if (!id) return null
+  const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`
+  const body = { query: 'SELECT * FROM c WHERE c.id = @id', parameters: [{ name: '@id', value: id }] }
+  const result = await fetchCosmos(path, 'POST', body, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` })
+  const docs = result.Documents ?? result.resources ?? []
+  return docs[0] ?? null
+}
+
+export async function queryIssues(filter: { status?: string | null, limit?: number | null, offset?: number | null }) {
+  // Build SQL: SELECT * FROM c WHERE ... ORDER BY c._ts DESC OFFSET x LIMIT y
+  const where: string[] = []
+  const params: any[] = []
+  if (filter?.status) {
+    where.push('c.status = @status')
+    params.push({ name: '@status', value: filter.status })
+  }
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : ''
+  const offset = filter?.offset && Number.isInteger(filter.offset) ? filter.offset : 0
+  const limit = filter?.limit && Number.isInteger(filter.limit) ? filter.limit : 100
+  const sql = `SELECT * FROM c ${whereClause} ORDER BY c._ts DESC OFFSET ${offset} LIMIT ${limit}`
+  const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`
+  const body = { query: sql, parameters: params }
+  const result = await fetchCosmos(path, 'POST', body, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` })
+  return result.Documents ?? result.resources ?? []
+}
+
+export async function upsertIssue(issue: any) {
+  // Upsert using POST + x-ms-documentdb-is-upsert header handled by fetchCosmos
+  const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`
+  // ensure partitionKey header is passed in options
+  const res = await fetchCosmos(path, 'POST', issue, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}`, partitionKey: String(issue.id) })
+  // For our helper fetchCosmos, POST will create or upsert depending on headers - we rely on server behaviour
+  return res.resource ?? res
+}
+
+export async function deleteIssueById(id: string) {
+  // Find the doc by id to get its _self link
+  const found = await getIssueById(id)
+  if (!found) return null
+  // _self contains a resource-relative path like dbs/<rid>/colls/<rid>/docs/<rid>/
+  let self = found._self
+  if (!self) {
+    // fallback to constructing docs path using id — delete may require resource rid; try doc id path
+    self = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${id}`
+  }
+  // perform delete
+  const res = await fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` })
+  return res
+}
+
+export default { listIssues, createIssue, getIssueById, queryIssues, upsertIssue, deleteIssueById }

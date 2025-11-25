@@ -2,8 +2,25 @@ import cosmos from '../lib/cosmosRest'
 
 const httpTrigger = async function (context: any, req: any): Promise<void> {
     try {
+        // Extract route id if provided (route: issues/{id?})
+        const routeId = req?.params?.id || req?.query?.id
+
         if (req.method === 'GET') {
-            const issues = await cosmos.listIssues()
+            if (routeId) {
+                const item = await cosmos.getIssueById(routeId)
+                if (!item) {
+                    context.res = { status: 404, body: { error: 'Not found' } }
+                } else {
+                    context.res = { status: 200, body: item }
+                }
+                return
+            }
+
+            // List with optional status + pagination
+            const status = req.query?.status || null
+            const limit = req.query?.limit ? parseInt(req.query.limit, 10) : undefined
+            const offset = req.query?.offset ? parseInt(req.query.offset, 10) : undefined
+            const issues = await cosmos.queryIssues({ status: status ?? null, limit: limit ?? null, offset: offset ?? null })
             context.res = { status: 200, body: issues }
         } else if (req.method === 'POST') {
                 // Normalize body — some runtimes supply a rawBody string/stream
@@ -16,8 +33,48 @@ const httpTrigger = async function (context: any, req: any): Promise<void> {
                     }
                 }
                 if (!issue?.id) issue.id = Date.now().toString()
+                // Add createdAt/updatedAt + default status
+                const now = new Date().toISOString()
+                issue.createdAt = issue.createdAt ?? now
+                issue.updatedAt = now
+                issue.status = issue.status ?? 'open'
             const created = await cosmos.createIssue(issue)
             context.res = { status: 201, body: created }
+        } else if (req.method === 'PUT') {
+            // Update / upsert via id in route or body
+            const idToUpdate = routeId || (req.body && req.body.id)
+            if (!idToUpdate) {
+                context.res = { status: 400, body: { error: 'Missing id' } }
+                return
+            }
+            let payload = req.body
+            if (!payload || typeof payload !== 'object') payload = {}
+            // Enforce id
+            payload.id = idToUpdate
+            // Validate at least title
+            if (!payload.title || typeof payload.title !== 'string' || !payload.title.trim()) {
+                context.res = { status: 400, body: { error: 'title is required' } }
+                return
+            }
+            const now = new Date().toISOString()
+            // keep createdAt if exists, else set
+            payload.updatedAt = now
+            payload.createdAt = payload.createdAt ?? now
+            payload.status = payload.status ?? 'open'
+            const updated = await cosmos.upsertIssue(payload)
+            context.res = { status: 200, body: updated }
+        } else if (req.method === 'DELETE') {
+            const idToDelete = routeId || (req.body && req.body.id)
+            if (!idToDelete) {
+                context.res = { status: 400, body: { error: 'Missing id' } }
+                return
+            }
+            const deleted = await cosmos.deleteIssueById(idToDelete)
+            if (!deleted) {
+                context.res = { status: 404, body: { error: 'Not found' } }
+            } else {
+                context.res = { status: 204, body: '' }
+            }
         } else {
             context.res = { status: 405, body: 'Method not allowed' }
         }
