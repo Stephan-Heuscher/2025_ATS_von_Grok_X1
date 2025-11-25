@@ -135,7 +135,14 @@ function getIssueById(id) {
 function queryIssues(filter) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b;
-        // Build SQL: SELECT * FROM c WHERE ... ORDER BY c._ts DESC OFFSET x LIMIT y
+        // For small datasets: avoid cross-partition ORDER BY/OFFSET queries which can fail in gateway.
+        // If a status filter is provided, fetch all and filter locally (acceptable for small demos)
+        const limit = (filter === null || filter === void 0 ? void 0 : filter.limit) && Number.isInteger(filter.limit) ? filter.limit : 100;
+        if (filter === null || filter === void 0 ? void 0 : filter.status) {
+            const all = yield listIssues();
+            const filtered = all.filter((d) => String(d.status) === String(filter.status));
+            return filtered.slice(0, limit);
+        }
         const where = [];
         const params = [];
         if (filter === null || filter === void 0 ? void 0 : filter.status) {
@@ -143,9 +150,8 @@ function queryIssues(filter) {
             params.push({ name: '@status', value: filter.status });
         }
         const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
-        const offset = (filter === null || filter === void 0 ? void 0 : filter.offset) && Number.isInteger(filter.offset) ? filter.offset : 0;
-        const limit = (filter === null || filter === void 0 ? void 0 : filter.limit) && Number.isInteger(filter.limit) ? filter.limit : 100;
-        const sql = `SELECT * FROM c ${whereClause} ORDER BY c._ts DESC OFFSET ${offset} LIMIT ${limit}`;
+        // OFFSET across partitions forces an ORDER BY — to avoid cross-partition gateway errors, support only LIMIT
+        const sql = `SELECT * FROM c ${whereClause} LIMIT ${limit}`;
         const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`;
         const body = { query: sql, parameters: params };
         const result = yield fetchCosmos(path, 'POST', body, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}` });
