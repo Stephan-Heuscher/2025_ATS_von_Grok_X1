@@ -38,6 +38,5 @@ jobs:
       - name: Run API integration tests
         run: |
           echo "Running integration tests against the deployed SWA API"
-          cd api
-          npm ci
-          npm run test:api
+          # run the node-based integration tests directly (avoid permission issues installing deps)
+          node api/tests/integration.test.js
