@@ -234,8 +234,28 @@ export async function deleteIssueById(id: string) {
     docRid = parts.length ? parts[parts.length - 1] : undefined
   }
 
-  const res = await fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: docRid, partitionKey: String(id) })
-  return res
+  try {
+    const res = await fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: docRid, partitionKey: String(id) })
+    return res
+  } catch (err: any) {
+    // If the document isn't found by the rid path (404), try a fallback
+    // delete using the doc id path (dbs/<db>/colls/<container>/docs/<id>). Some
+    // server-side configurations / query/index timing can make rid-based deletes
+    // not resolvable from the same rid. This fallback attempts to delete using
+    // the id path and the partition-key to ensure eventual deletion.
+    const msg = String(err.message || err)
+    if (msg.includes('404') || msg.includes('NotFound')) {
+      const fallbackPath = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${id}`
+      try {
+        const fallback = await fetchCosmos(fallbackPath, 'DELETE', undefined, { resourceType: 'docs', resourceId: id, partitionKey: String(id) })
+        return fallback
+      } catch (err2: any) {
+        // bubble up the original error if fallback also fails
+        throw err2 || err
+      }
+    }
+    throw err
+  }
 }
 
 export default { listIssues, createIssue, getIssueById, queryIssues, upsertIssue, deleteIssueById }
