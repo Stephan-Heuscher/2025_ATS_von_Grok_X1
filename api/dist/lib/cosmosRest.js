@@ -67,9 +67,17 @@ function fetchCosmos(path, verb, body, opts) {
             'x-ms-version': defaultApiVersion,
             'Accept': 'application/json',
         };
-        if (verb === 'POST' && (opts === null || opts === void 0 ? void 0 : opts.partitionKey)) {
+        // Include partition key header for operations when provided (reads/deletes/writes)
+        if (opts === null || opts === void 0 ? void 0 : opts.partitionKey) {
             headers['x-ms-documentdb-partitionkey'] = JSON.stringify([opts.partitionKey]);
-            headers['Content-Type'] = 'application/json';
+            // ensure content-type when we have a body
+            if (verb === 'POST' || verb === 'PUT')
+                headers['Content-Type'] = 'application/json';
+        }
+        if (verb === 'POST' && (opts === null || opts === void 0 ? void 0 : opts.isUpsert)) {
+            headers['x-ms-documentdb-is-upsert'] = 'true';
+            // ensure content-type for an upsert
+            headers['Content-Type'] = headers['Content-Type'] || 'application/json';
         }
         // For query operations (POST + isQuery) callers should provide isQuery flags and content-type
         if (verb === 'POST' && body && body.query) {
@@ -161,11 +169,18 @@ function queryIssues(filter) {
 function upsertIssue(issue) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
-        // Upsert using POST + x-ms-documentdb-is-upsert header handled by fetchCosmos
+        if (!(issue === null || issue === void 0 ? void 0 : issue.id))
+            throw new Error('upsertIssue requires issue.id');
+        // Use Cosmos REST upsert semantics via POST + x-ms-documentdb-is-upsert
+        // This is simpler and avoids relying on _self links returned from queries.
         const path = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs`;
-        // ensure partitionKey header is passed in options
-        const res = yield fetchCosmos(path, 'POST', issue, { resourceType: 'docs', resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}`, partitionKey: String(issue.id) });
-        // For our helper fetchCosmos, POST will create or upsert depending on headers - we rely on server behaviour
+        const res = yield fetchCosmos(path, 'POST', issue, {
+            resourceType: 'docs',
+            resourceId: `dbs/${DB_NAME}/colls/${CONTAINER_NAME}`,
+            partitionKey: String(issue.id),
+            isUpsert: true
+        });
+        // POST with is-upsert commonly returns resource in `resource`
         return (_a = res.resource) !== null && _a !== void 0 ? _a : res;
     });
 }
