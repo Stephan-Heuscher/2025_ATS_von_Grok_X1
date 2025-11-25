@@ -6,7 +6,8 @@
     "build": "tsc",
     "watch": "tsc -w",
     "prestart": "npm run build",
-    "start": "func start"
+    "start": "func start",
+    "test:api": "node tests/integration.test.js"
   },
   "dependencies": {},
   "devDependencies": {
