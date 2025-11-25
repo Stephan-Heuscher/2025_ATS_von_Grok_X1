@@ -9,33 +9,47 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const cosmos_1 = require("@azure/cosmos");
+// Read connection string from the deployment setting (set by SWA in the portal or via az)
+const connectionString = process.env.COSMOS_CONNECTION_STRING;
+const client = connectionString ? new cosmos_1.CosmosClient(connectionString) : null;
+const database = client ? client.database('IssueTrackerDB') : null;
+const container = database ? database.container('Issues') : null;
 const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
-        const mockIssues = [
-            { id: '1', title: 'Fix login bug', description: 'Users cannot log in', priority: 'High', status: 'ToDo' },
-            { id: '2', title: 'Add dark mode', description: 'Implement dark theme', priority: 'Med', status: 'In Progress' },
-            { id: '3', title: 'Update docs', description: 'Update user documentation', priority: 'Low', status: 'Done' },
-        ];
-        if (req.method === "GET") {
-            context.res = {
-                status: 200,
-                body: mockIssues
-            };
+        var _a, _b;
+        try {
+            if (req.method === 'GET') {
+                if (!container)
+                    throw new Error('Cosmos DB not configured');
+                const { resources: issues } = yield container.items.readAll().fetchAll();
+                context.res = { status: 200, body: issues };
+            }
+            else if (req.method === 'POST') {
+                if (!container)
+                    throw new Error('Cosmos DB not configured');
+                // Normalize body — some runtimes supply a rawBody string/stream
+                let issue = req.body;
+                if (!issue || typeof issue !== 'object') {
+                    try {
+                        issue = JSON.parse(req.rawBody || issue || '{}');
+                    }
+                    catch (_c) {
+                        issue = req.body;
+                    }
+                }
+                if (!(issue === null || issue === void 0 ? void 0 : issue.id))
+                    issue.id = Date.now().toString();
+                const { resource: created } = yield container.items.create(issue);
+                context.res = { status: 201, body: created };
+            }
+            else {
+                context.res = { status: 405, body: 'Method not allowed' };
+            }
         }
-        else if (req.method === "POST") {
-            const newIssue = req.body;
-            // Simulate creating
-            const created = Object.assign(Object.assign({}, newIssue), { id: Date.now().toString() });
-            context.res = {
-                status: 201,
-                body: created
-            };
-        }
-        else {
-            context.res = {
-                status: 405,
-                body: "Method not allowed"
-            };
+        catch (err) {
+            context.log && context.log.error && context.log.error('API error', (_a = err.message) !== null && _a !== void 0 ? _a : err);
+            context.res = { status: 500, body: { error: 'Server error', detail: (_b = err.message) !== null && _b !== void 0 ? _b : String(err) } };
         }
     });
 };
