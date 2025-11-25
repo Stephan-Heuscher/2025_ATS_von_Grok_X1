@@ -21,8 +21,9 @@ function decodeKey(rawKey: string) {
 
 function buildStringToSign(verb: string, resourceType: string, resourceId: string, date: string) {
   // stringToSign format required by Cosmos DB: verb + '\n' + resourceType + '\n' + resourceId + '\n' + date.toLowerCase() + '\n' + '\n'
-  // The service may normalize resource ids / paths to lower-case when signing,
-  // so use a lower-cased resourceId in the canonical string to avoid mismatches.
+  // Use the resourceId exactly as provided by callers. For document-level
+  // operations the caller should pass the doc rid (lower-cased) if required;
+  // collection-level resource ids must preserve their case.
   return `${verb.toLowerCase()}\n${resourceType.toLowerCase()}\n${resourceId}\n${date.toLowerCase()}\n\n`
 }
 
@@ -53,9 +54,16 @@ async function fetchCosmos(path: string, verb: 'GET'|'POST'|'PUT'|'DELETE', body
   // auth signature. For create (POST on docs) or queries, the collection-level
   // resourceId is used. Compute a canonical resourceId used for signing.
   let resourceIdForSigning = resourceIdRaw
-  if ((verb === 'DELETE' || verb === 'PUT') && /\/docs\/[^\/]+$/.test(resourceIdRaw)) {
-    const parts = resourceIdRaw.split('/').filter(Boolean)
-    resourceIdForSigning = parts.length ? parts[parts.length - 1].toLowerCase() : resourceIdRaw
+  if ((verb === 'DELETE' || verb === 'PUT')) {
+    // If the resourceId refers to a document path, use the doc's rid for signing.
+    if (/\/docs\/[^\/]+$/.test(resourceIdRaw)) {
+      const parts = resourceIdRaw.split('/').filter(Boolean)
+      resourceIdForSigning = parts.length ? parts[parts.length - 1].toLowerCase() : resourceIdRaw
+    } else if (!resourceIdRaw.includes('/')) {
+      // If resourceIdRaw looks like a doc rid already (no slashes), lowercase it
+      // for signing — the server often lower-cases rids when computing the signature.
+      resourceIdForSigning = resourceIdRaw.toLowerCase()
+    }
   }
 
   const token = authToken(verb, resourceType, resourceIdForSigning, date, key)
@@ -106,10 +114,19 @@ async function fetchCosmos(path: string, verb: 'GET'|'POST'|'PUT'|'DELETE', body
     throw new Error(`Cosmos REST ${verb} ${url} failed: ${res.status} ${res.statusText} - ${text}`)
   }
   const ct = res.headers.get('content-type') || ''
+  // read raw text once and return appropriate type; some successful operations
+  // (e.g., DELETE) can return empty bodies which cause res.json() to throw.
+  const raw = await res.text()
+  if (!raw || raw.trim().length === 0) return null
   if (ct.includes('application/json')) {
-    return await res.json()
+    try {
+      return JSON.parse(raw)
+    } catch {
+      // fall back to returning raw if parsing fails
+      return raw
+    }
   }
-  return await res.text()
+  return raw
 }
 
 // API helper methods for the Issues container
