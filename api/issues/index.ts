@@ -69,11 +69,18 @@ const httpTrigger = async function (context: any, req: any): Promise<void> {
                 context.res = { status: 400, body: { error: 'Missing id' } }
                 return
             }
-            const deleted = await cosmos.deleteIssueById(idToDelete)
-            if (!deleted) {
-                context.res = { status: 404, body: { error: 'Not found' } }
-            } else {
-                context.res = { status: 204, body: '' }
+            try {
+                const deleted = await cosmos.deleteIssueById(idToDelete)
+                if (!deleted) {
+                    // Return some diagnostic info to help debug cross-environment cases
+                    context.res = { status: 404, body: { error: 'Not found', id: idToDelete, note: 'no document found to delete' } }
+                } else {
+                    context.res = { status: 204, body: '' }
+                }
+            } catch (err: any) {
+                // expose a compact error message for debugging (not the keys)
+                context.log && context.log.error && context.log.error('delete error', err?.message ?? String(err))
+                context.res = { status: 500, body: { error: 'Server error', detail: err?.message ?? String(err) } }
             }
         } else {
             context.res = { status: 405, body: 'Method not allowed' }

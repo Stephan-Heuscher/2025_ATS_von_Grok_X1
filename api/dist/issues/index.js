@@ -12,7 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const cosmosRest_1 = require("../lib/cosmosRest");
 const httpTrigger = function (context, req) {
     return __awaiter(this, void 0, void 0, function* () {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
         try {
             // Extract route id if provided (route: issues/{id?})
             const routeId = ((_a = req === null || req === void 0 ? void 0 : req.params) === null || _a === void 0 ? void 0 : _a.id) || ((_b = req === null || req === void 0 ? void 0 : req.query) === null || _b === void 0 ? void 0 : _b.id);
@@ -41,7 +41,7 @@ const httpTrigger = function (context, req) {
                     try {
                         issue = JSON.parse(req.rawBody || issue || '{}');
                     }
-                    catch (_m) {
+                    catch (_p) {
                         issue = req.body;
                     }
                 }
@@ -86,12 +86,20 @@ const httpTrigger = function (context, req) {
                     context.res = { status: 400, body: { error: 'Missing id' } };
                     return;
                 }
-                const deleted = yield cosmosRest_1.default.deleteIssueById(idToDelete);
-                if (!deleted) {
-                    context.res = { status: 404, body: { error: 'Not found' } };
+                try {
+                    const deleted = yield cosmosRest_1.default.deleteIssueById(idToDelete);
+                    if (!deleted) {
+                        // Return some diagnostic info to help debug cross-environment cases
+                        context.res = { status: 404, body: { error: 'Not found', id: idToDelete, note: 'no document found to delete' } };
+                    }
+                    else {
+                        context.res = { status: 204, body: '' };
+                    }
                 }
-                else {
-                    context.res = { status: 204, body: '' };
+                catch (err) {
+                    // expose a compact error message for debugging (not the keys)
+                    context.log && context.log.error && context.log.error('delete error', (_k = err === null || err === void 0 ? void 0 : err.message) !== null && _k !== void 0 ? _k : String(err));
+                    context.res = { status: 500, body: { error: 'Server error', detail: (_l = err === null || err === void 0 ? void 0 : err.message) !== null && _l !== void 0 ? _l : String(err) } };
                 }
             }
             else {
@@ -99,8 +107,8 @@ const httpTrigger = function (context, req) {
             }
         }
         catch (err) {
-            context.log && context.log.error && context.log.error('API error', (_k = err.message) !== null && _k !== void 0 ? _k : err);
-            context.res = { status: 500, body: { error: 'Server error', detail: (_l = err.message) !== null && _l !== void 0 ? _l : String(err) } };
+            context.log && context.log.error && context.log.error('API error', (_m = err.message) !== null && _m !== void 0 ? _m : err);
+            context.res = { status: 500, body: { error: 'Server error', detail: (_o = err.message) !== null && _o !== void 0 ? _o : String(err) } };
         }
     });
 };
