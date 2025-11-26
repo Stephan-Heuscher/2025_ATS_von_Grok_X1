@@ -23,6 +23,35 @@ const httpTrigger = async function (context: any, req: any): Promise<void> {
             const issues = await cosmos.queryIssues({ status: status ?? null, limit: limit ?? null, offset: offset ?? null })
             context.res = { status: 200, body: issues }
         } else if (req.method === 'POST') {
+            // Support adding comments to an existing issue via POST /api/issues/{id}?action=comment
+            if (routeId && req.query?.action === 'comment') {
+                let payload: any = req.body
+                if (!payload || typeof payload !== 'object') {
+                    try { payload = JSON.parse(req.rawBody || '{}') } catch { payload = {} }
+                }
+                const author = String(payload.author ?? 'anonymous')
+                const message = String(payload.message ?? '')
+                if (!message.trim()) {
+                    context.res = { status: 400, body: { error: 'message is required' } }
+                    return
+                }
+                // fetch existing issue
+                const existing = await cosmos.getIssueById(routeId)
+                if (!existing) {
+                    context.res = { status: 404, body: { error: 'Not found' } }
+                    return
+                }
+                const now = new Date().toISOString()
+                const comment = { id: Date.now().toString(), author, message, createdAt: now }
+                const comments = Array.isArray(existing.comments) ? existing.comments.concat(comment) : [comment]
+                // append an activity entry as well
+                const activityEntry = { type: 'comment', by: author, message, at: now }
+                const history = Array.isArray(existing.history) ? existing.history.concat(activityEntry) : [activityEntry]
+                const updated = { ...existing, comments, history, updatedAt: now }
+                const up = await cosmos.upsertIssue(updated)
+                context.res = { status: 200, body: up }
+                return
+            }
                 // Normalize body — some runtimes supply a rawBody string/stream
                 let issue: any = req.body
                 if (!issue || typeof issue !== 'object') {
@@ -33,11 +62,16 @@ const httpTrigger = async function (context: any, req: any): Promise<void> {
                     }
                 }
                 if (!issue?.id) issue.id = Date.now().toString()
-                // Add createdAt/updatedAt + default status
+                // Add createdAt/updatedAt + default status (align with UI)
                 const now = new Date().toISOString()
                 issue.createdAt = issue.createdAt ?? now
                 issue.updatedAt = now
-                issue.status = issue.status ?? 'open'
+                issue.status = issue.status ?? 'ToDo'
+                // ensure assignee field exists (can be null or string)
+                issue.assignee = issue.assignee ?? null
+            // ensure comments/history exist
+            issue.comments = Array.isArray(issue.comments) ? issue.comments : []
+            issue.history = Array.isArray(issue.history) ? issue.history : [{ type: 'created', by: issue.assignee ?? null, at: now }]
             const created = await cosmos.createIssue(issue)
             context.res = { status: 201, body: created }
         } else if (req.method === 'PUT') {
@@ -60,7 +94,31 @@ const httpTrigger = async function (context: any, req: any): Promise<void> {
             // keep createdAt if exists, else set
             payload.updatedAt = now
             payload.createdAt = payload.createdAt ?? now
-            payload.status = payload.status ?? 'open'
+            payload.status = payload.status ?? 'ToDo'
+            // normalize assignee if not present
+            if (!Object.prototype.hasOwnProperty.call(payload, 'assignee')) payload.assignee = null
+            // maintain history when status has changed
+            try {
+                const stored = await cosmos.getIssueById(idToUpdate)
+                if (stored) {
+                    const was = stored.status
+                    const now = new Date().toISOString()
+                    // track status changes
+                    if (payload.status && payload.status !== was) {
+                        payload.history = Array.isArray(stored.history) ? stored.history.concat({ type: 'status', from: was, to: payload.status, at: now }) : [{ type: 'status', from: was, to: payload.status, at: now }]
+                    }
+                    // track assignee changes
+                    if (Object.prototype.hasOwnProperty.call(payload, 'assignee') && payload.assignee !== stored.assignee) {
+                        payload.history = Array.isArray(payload.history) ? payload.history.concat({ type: 'assign', from: stored.assignee ?? null, to: payload.assignee ?? null, at: now, by: payload.assignee ?? null }) : [{ type: 'assign', from: stored.assignee ?? null, to: payload.assignee ?? null, at: now, by: payload.assignee ?? null }]
+                    }
+                    } else {
+                        payload.history = stored.history ?? []
+                    }
+                    payload.comments = stored.comments ?? []
+                }
+            } catch {
+                // ignore failures to enrich history
+            }
             const updated = await cosmos.upsertIssue(payload)
             context.res = { status: 200, body: updated }
         } else if (req.method === 'DELETE') {

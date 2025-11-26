@@ -11,6 +11,8 @@ interface Issue {
   description: string
   priority: 'Low' | 'Med' | 'High'
   status: 'ToDo' | 'In Progress' | 'Done'
+  // optional assignee (technician / owner)
+  assignee?: string | null
 }
 
 interface CreateIssueProps {
@@ -22,14 +24,17 @@ const CreateIssue = ({ onCreate }: CreateIssueProps) => {
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState<'Low' | 'Med' | 'High'>('Med')
   const [status, setStatus] = useState<'ToDo' | 'In Progress' | 'Done'>('ToDo')
+  const [assignee, setAssignee] = useState<string>('')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    onCreate({ title, description, priority, status })
+    // pass assignee if provided
+    onCreate({ title, description, priority, status, assignee: assignee || undefined })
     setTitle('')
     setDescription('')
     setPriority('Med')
     setStatus('ToDo')
+    setAssignee('')
   }
 
   return (
@@ -79,6 +84,15 @@ const CreateIssue = ({ onCreate }: CreateIssueProps) => {
               <SelectItem value="Done">Done</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+        <div>
+          <Label htmlFor="assignee">Assignee</Label>
+          <Input
+            id="assignee"
+            placeholder="(unassigned) e.g. Technician name"
+            value={assignee}
+            onChange={(e) => setAssignee(e.target.value)}
+          />
         </div>
         <Button type="submit">Create Issue</Button>
       </div>

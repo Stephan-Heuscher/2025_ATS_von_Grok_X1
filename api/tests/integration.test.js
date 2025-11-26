@@ -32,6 +32,15 @@ async function run() {
   if (!updated || updated.status !== 'closed') exitFailure('PUT did not set status closed')
   console.log('PUT OK')
 
+  // Update assignee using PUT (must include title per API)
+  const assigneeRes = await fetch(`${baseUrl}/issues/${id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, title: 'CI Test (updated)', assignee: 'Tech A' })
+  })
+  if (assigneeRes.status !== 200) exitFailure(`assignee PUT failed: ${assigneeRes.status}`)
+  const assigneeUpdated = await assigneeRes.json()
+  if (!assigneeUpdated || assigneeUpdated.assignee !== 'Tech A') exitFailure('PUT did not set assignee')
+  console.log('Assignee update OK')
+
   // GET
   const getRes = await fetch(`${baseUrl}/issues/${id}`)
   if (getRes.status !== 200) exitFailure(`GET failed: ${getRes.status}`)
@@ -44,6 +53,19 @@ async function run() {
   const delText = await delRes.text().catch(() => '')
   if (![200,204].includes(delRes.status)) exitFailure(`DELETE failed: ${delRes.status} - ${delText}`)
   console.log('DELETE OK')
+
+  // comment flow testing
+  // recreate a new item to test comments separately
+  const id2 = `${Date.now()}${Math.floor(Math.random()*1000)}`
+  const createRes2 = await fetch(`${baseUrl}/issues`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: id2, title: 'CI Test 2', description: 'for comments' }) })
+  if (createRes2.status !== 201) exitFailure(`POST for comments failed: ${createRes2.status}`)
+  const created2 = await createRes2.json()
+  // POST comment to issue
+  const commentRes = await fetch(`${baseUrl}/issues/${id2}?action=comment`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ author: 'ci-runner', message: 'this is a comment' }) })
+  if (commentRes.status !== 200) exitFailure(`comment POST failed: ${commentRes.status}`)
+  const withComment = await commentRes.json()
+  if (!withComment || !Array.isArray(withComment.comments) || withComment.comments.length < 1) exitFailure('Comment not recorded')
+  console.log('Comment POST OK')
 
   // Ensure it's gone
   const getAgain = await fetch(`${baseUrl}/issues/${id}`)
