@@ -1,5 +1,8 @@
 # Sleek Issue Tracking System
 
+[![Azure Static Web Apps CI/CD](https://github.com/Stephan-Heuscher/2025_ATS_von_Grok_X1/actions/workflows/azure-static-web-apps-main.yml/badge.svg?branch=main)](https://github.com/Stephan-Heuscher/2025_ATS_von_Grok_X1/actions/workflows/azure-static-web-apps-main.yml)
+[![Deployed to Azure Static Web Apps](https://img.shields.io/badge/deployed-agreeable--stone-blue?logo=azure)](https://agreeable-stone-0a4c73503.3.azurestaticapps.net)
+
 A modern, cost-optimized issue tracking system built on Azure.
 
 ## Project Structure
@@ -80,6 +83,11 @@ curl -X POST "https://<your-app>.azurestaticapps.net/api/issues/12345?action=com
 Notes:
 - The API supports a safe upsert flow using the Cosmos DB REST header `x-ms-documentdb-is-upsert` so POST/PUT operations with an existing id will be merged/updated rather than causing 409 conflicts.
 - Environment configuration: Set `COSMOS_CONNECTION_STRING` (or `COSMOS_ACCOUNT_ENDPOINT` + `COSMOS_ACCOUNT_KEY`) and optionally `COSMOS_DB_NAME` and `COSMOS_CONTAINER_NAME` if you use different values.
+
+Note about deploy previews and CI
+---------------------------------
+
+This repository uses an Azure Static Web Apps CI/CD workflow that runs on pushes to `main` and on pull requests. The workflow will deploy a preview environment for pull requests (preview URL is provided in the workflow logs) and runs both a frontend smoke check and API integration tests.
 
 
 ## Frontend Code

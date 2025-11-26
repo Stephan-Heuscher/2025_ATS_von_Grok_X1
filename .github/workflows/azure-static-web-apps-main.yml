@@ -35,8 +35,23 @@ jobs:
           api_location: "api"
           output_location: "dist"
 
-      - name: Run API integration tests
+      - name: Expose deployment outputs
         run: |
-          echo "Running integration tests against the deployed SWA API"
-          # run the node-based integration tests directly (avoid permission issues installing deps)
+          echo "Deployed site: ${{ steps.deploy_swa.outputs.static_web_app_url }}"
+          echo "API endpoint: ${{ steps.deploy_swa.outputs.api_url }}"
+          # Set a simple environment variable we'll use for subsequent checks
+          echo "DEPLOY_URL=${{ steps.deploy_swa.outputs.static_web_app_url }}" >> $GITHUB_ENV
+
+      - name: Smoke-check frontend
+        run: |
+          echo "Checking site availability at $DEPLOY_URL"
+          # fail if root URL doesn't return 2xx
+          curl -sSf "$DEPLOY_URL" > /dev/null
+
+      - name: Run API integration tests
+        env:
+          # the API tests use API_BASEURL if set; point them at the deployed preview/prod API
+          API_BASEURL: "$DEPLOY_URL/api"
+        run: |
+          echo "Running integration tests against $API_BASEURL"
           node api/tests/integration.test.js
