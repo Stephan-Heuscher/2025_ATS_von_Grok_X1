@@ -232,10 +232,29 @@ function upsertIssue(issue) {
 function deleteIssueById(id) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
-        // Find the doc by id to get its _self link
+        // Find the doc by id to get its _self link. Some gateway/config
+        // situations can cause the SELECT query to return no results right
+        // after an upsert; to make deletes more robust we'll attempt a
+        // conservative id-based delete if the query returns nothing.
         const found = yield getIssueById(id);
-        if (!found)
+        if (!found) {
+            // Attempt a best-effort id-based delete (dbs/<db>/colls/<container>/docs/<id>)
+            // using the id as the resourceId for signing and partition-key header.
+            try {
+                const pathIdFallback = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${id}`;
+                const fallbackRes = yield fetchCosmos(pathIdFallback, 'DELETE', undefined, { resourceType: 'docs', resourceId: id, partitionKey: String(id) });
+                return fallbackRes;
+            }
+            catch (err) {
+                // If the fallback fails we continue and return null to indicate nothing deleted
+                // so callers can surface diagnostics.
+                // keep going to later code-path that would attempt rid-based delete if it existed.
+                // (we don't rethrow here since upstream error handling expects null when not found)
+                // log in-memory (no direct FS logging here) and fall-through to return null below.
+                void err;
+            }
             return null;
+        }
         // Prefer the server-supplied _self path (resource-relative, using rids)
         // which is the most reliable addressable path. If _self is missing, fall
         // back to using the document's _rid to construct a resource path using
@@ -264,7 +283,9 @@ function deleteIssueById(id) {
         }
         try {
             const res = yield fetchCosmos(self, 'DELETE', undefined, { resourceType: 'docs', resourceId: docRid, partitionKey: String(id) });
-            return res;
+            // fetchCosmos returns null for successful operations that return no body
+            // (DELETE commonly returns empty body). Treat an OK delete as truthy.
+            return res !== null && res !== void 0 ? res : true;
         }
         catch (err) {
             // If the document isn't found by the rid path (404), try a fallback
@@ -277,7 +298,7 @@ function deleteIssueById(id) {
                 const fallbackPath = `/dbs/${DB_NAME}/colls/${CONTAINER_NAME}/docs/${id}`;
                 try {
                     const fallback = yield fetchCosmos(fallbackPath, 'DELETE', undefined, { resourceType: 'docs', resourceId: id, partitionKey: String(id) });
-                    return fallback;
+                    return fallback !== null && fallback !== void 0 ? fallback : true;
                 }
                 catch (err2) {
                     // bubble up the original error if fallback also fails
