@@ -101,20 +101,28 @@ const httpTrigger = async function (context: any, req: any): Promise<void> {
             try {
                 const stored = await cosmos.getIssueById(idToUpdate)
                 if (stored) {
-                    const was = stored.status
-                    const now = new Date().toISOString()
+                    const prevStatus = stored.status
+                    const tnow = new Date().toISOString()
+
+                    // initialize history from stored history
+                    payload.history = Array.isArray(stored.history) ? stored.history.slice() : []
+
                     // track status changes
-                    if (payload.status && payload.status !== was) {
-                        payload.history = Array.isArray(stored.history) ? stored.history.concat({ type: 'status', from: was, to: payload.status, at: now }) : [{ type: 'status', from: was, to: payload.status, at: now }]
+                    if (payload.status && payload.status !== prevStatus) {
+                        payload.history = payload.history.concat({ type: 'status', from: prevStatus, to: payload.status, at: tnow })
                     }
+
                     // track assignee changes
                     if (Object.prototype.hasOwnProperty.call(payload, 'assignee') && payload.assignee !== stored.assignee) {
-                        payload.history = Array.isArray(payload.history) ? payload.history.concat({ type: 'assign', from: stored.assignee ?? null, to: payload.assignee ?? null, at: now, by: payload.assignee ?? null }) : [{ type: 'assign', from: stored.assignee ?? null, to: payload.assignee ?? null, at: now, by: payload.assignee ?? null }]
+                        payload.history = payload.history.concat({ type: 'assign', from: stored.assignee ?? null, to: payload.assignee ?? null, at: tnow, by: payload.assignee ?? null })
                     }
-                    } else {
-                        payload.history = stored.history ?? []
-                    }
-                    payload.comments = stored.comments ?? []
+
+                    // preserve comments from stored item when available
+                    payload.comments = Array.isArray(stored.comments) ? stored.comments.slice() : []
+                } else {
+                    // no stored item found — keep any provided history/comments, or initialize empty arrays
+                    payload.history = Array.isArray(payload.history) ? payload.history : []
+                    payload.comments = Array.isArray(payload.comments) ? payload.comments : []
                 }
             } catch {
                 // ignore failures to enrich history
