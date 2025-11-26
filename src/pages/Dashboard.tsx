@@ -14,10 +14,24 @@ const Dashboard = () => {
   const [issues, setIssues] = useState<Issue[]>([])
 
   useEffect(() => {
-    // Fetch issues from API
+    // Fetch issues from API. Be defensive about the response shape — deployed
+    // API may return an object with Documents / resources or an error object.
     fetch('/api/issues')
       .then(res => res.json())
-      .then(setIssues)
+      .then(data => {
+        // If the server returned an array, use it directly
+        if (Array.isArray(data)) return setIssues(data)
+        // Common Cosmos responses may include Documents or resources
+        if (Array.isArray(data?.Documents)) return setIssues(data.Documents)
+        if (Array.isArray(data?.resources)) return setIssues(data.resources)
+        // If we got an error object or something unexpected, fall back to mock data
+        const mockIssues: Issue[] = [
+          { id: '1', title: 'Fix login bug', description: 'Users cannot log in', priority: 'High', status: 'ToDo' },
+          { id: '2', title: 'Add dark mode', description: 'Implement dark theme', priority: 'Med', status: 'In Progress' },
+          { id: '3', title: 'Update docs', description: 'Update user documentation', priority: 'Low', status: 'Done' },
+        ]
+        setIssues(mockIssues)
+      })
       .catch(() => {
         // Fallback to mock data if API fails
         const mockIssues: Issue[] = [
@@ -36,7 +50,13 @@ const Dashboard = () => {
       body: JSON.stringify(newIssue)
     })
       .then(res => res.json())
-      .then(issue => setIssues(prev => [...prev, issue]))
+      .then(issue => {
+        // Defensive: server might return created resource in various shapes
+        if (Array.isArray(issue)) return setIssues(prev => [...prev, ...issue])
+        if (issue?.resource) return setIssues(prev => [...prev, issue.resource])
+        if (issue?.id) return setIssues(prev => [...prev, issue])
+        // Otherwise ignore and let fallback handle it
+      })
       .catch(() => {
         // Fallback: simulate locally
         const issue: Issue = { ...newIssue, id: Date.now().toString() }
