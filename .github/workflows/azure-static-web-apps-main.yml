@@ -19,6 +19,12 @@ jobs:
         with:
           node-version: '18'
 
+      - name: Set build metadata for frontend
+        run: |
+          echo "VITE_BUILD_SHA=${GITHUB_SHA}" >> $GITHUB_ENV
+          echo "VITE_BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+          echo "VITE_APP_VERSION=$(node -p \"require('./package.json').version\")" >> $GITHUB_ENV
+
       - name: Build app
         run: |
           npm ci
@@ -43,20 +49,32 @@ jobs:
           echo "DEPLOY_URL=${{ steps.deploy_swa.outputs.static_web_app_url }}" >> $GITHUB_ENV
 
       - name: Smoke-check frontend (use /api/health)
+        continue-on-error: true
         run: |
           echo "Checking site availability at $DEPLOY_URL/api/health"
-          # fail if health URL doesn't return 2xx
-          curl -sSf "$DEPLOY_URL/api/health" > /dev/null
+          if curl -sSf "$DEPLOY_URL/api/health" > /dev/null; then
+            echo "SMOKE_RESULT=PASS" >> $GITHUB_ENV
+          else
+            echo "SMOKE_RESULT=FAIL" >> $GITHUB_ENV
+          fi
 
       - name: Run API integration tests
+        continue-on-error: true
         env:
           # the API tests use API_BASEURL if set; point them at the deployed preview/prod API
           API_BASEURL: "$DEPLOY_URL/api"
         run: |
           echo "Running integration tests against $API_BASEURL"
+          set +e
           node api/tests/integration.test.js
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo "API_TEST_RESULT=PASS" >> $GITHUB_ENV
+          else
+            echo "API_TEST_RESULT=FAIL" >> $GITHUB_ENV
+          fi
 
-      - name: Comment PR with preview URL
+      - name: Comment PR with preview URL and checks
         if: ${{ github.event_name == 'pull_request' }}
         uses: actions/github-script@v6
         with:
@@ -64,9 +82,21 @@ jobs:
           script: |
             const url = process.env.DEPLOY_URL
             const pr = context.payload.pull_request?.number
+            const smoke = process.env.SMOKE_RESULT ?? 'UNKNOWN'
+            const api = process.env.API_TEST_RESULT ?? 'UNKNOWN'
             if (!url || !pr) {
               core.info('No preview URL or PR number available; skipping comment')
             } else {
-              const body = `✅ Preview deployed for PR #${pr}: ${url}\n\nVisit the app to test. The workflow also ran smoke checks and API integration tests.`
+              const body = `✅ Preview deployed for PR #${pr}: ${url}\n\nSmoke-check: ${smoke}\nAPI integration tests: ${api}\n\nVisit the preview to interact with the app — logs and full test output are available in the workflow run.`
               await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: pr, body })
             }
+
+      - name: Fail job if any check failed
+        run: |
+          SMOKE=${SMOKE_RESULT:-UNKNOWN}
+          API=${API_TEST_RESULT:-UNKNOWN}
+          echo "smoke=$SMOKE api=$API"
+          if [ "$SMOKE" = "FAIL" ] || [ "$API" = "FAIL" ]; then
+            echo "One or more checks failed — failing job"
+            exit 1
+          fi

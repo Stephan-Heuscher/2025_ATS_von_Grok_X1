@@ -5,6 +5,7 @@ import DashboardPage from './pages/DashboardPage'
 import IssuesListPage from './pages/IssuesListPage'
 import CreateIssuePage from './pages/CreateIssuePage'
 import SettingsPage from './pages/SettingsPage'
+import HealthPage from './pages/HealthPage'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
             <Route path="/issues" element={<IssuesListPage />} />
             <Route path="/create" element={<CreateIssuePage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/health" element={<HealthPage />} />
           </Routes>
         </Layout>
       </IssuesProvider>

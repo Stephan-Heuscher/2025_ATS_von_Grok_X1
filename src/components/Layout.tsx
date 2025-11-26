@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, PlusCircle, ListTodo, Settings } from 'lucide-react'
+import { LayoutDashboard, PlusCircle, ListTodo, Settings, Activity } from 'lucide-react'
 
 interface LayoutProps {
   children: React.ReactNode
@@ -8,9 +8,10 @@ interface LayoutProps {
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation()
   
-  const navItems = [
+    const navItems = [
     { path: '/', label: 'Dashboard', icon: LayoutDashboard },
     { path: '/issues', label: 'All Issues', icon: ListTodo },
+      { path: '/health', label: 'Health', icon: Activity },
     { path: '/create', label: 'New Issue', icon: PlusCircle },
     { path: '/settings', label: 'Settings', icon: Settings },
   ]

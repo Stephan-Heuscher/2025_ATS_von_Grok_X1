@@ -98,6 +98,11 @@ Preview workflow runs and status can be inspected on the Actions page for this r
 
 [![PR previews (actions)](https://github.com/Stephan-Heuscher/2025_ATS_von_Grok_X1/actions/workflows/azure-static-web-apps-main.yml/badge.svg?event=pull_request)](https://github.com/Stephan-Heuscher/2025_ATS_von_Grok_X1/actions/workflows/azure-static-web-apps-main.yml)
 
+Build & health page
+-------------------
+
+The frontend exposes a simple health / build information page at `/health` which displays the current build SHA and build time (injected by CI as Vite env vars) and performs a quick API health fetch to `/api/health`.
+
 
 ## Frontend Code
 
