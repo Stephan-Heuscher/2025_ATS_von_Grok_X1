@@ -42,11 +42,11 @@ jobs:
           # Set a simple environment variable we'll use for subsequent checks
           echo "DEPLOY_URL=${{ steps.deploy_swa.outputs.static_web_app_url }}" >> $GITHUB_ENV
 
-      - name: Smoke-check frontend
+      - name: Smoke-check frontend (use /api/health)
         run: |
-          echo "Checking site availability at $DEPLOY_URL"
-          # fail if root URL doesn't return 2xx
-          curl -sSf "$DEPLOY_URL" > /dev/null
+          echo "Checking site availability at $DEPLOY_URL/api/health"
+          # fail if health URL doesn't return 2xx
+          curl -sSf "$DEPLOY_URL/api/health" > /dev/null
 
       - name: Run API integration tests
         env:
@@ -55,3 +55,18 @@ jobs:
         run: |
           echo "Running integration tests against $API_BASEURL"
           node api/tests/integration.test.js
+
+      - name: Comment PR with preview URL
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const url = process.env.DEPLOY_URL
+            const pr = context.payload.pull_request?.number
+            if (!url || !pr) {
+              core.info('No preview URL or PR number available; skipping comment')
+            } else {
+              const body = `✅ Preview deployed for PR #${pr}: ${url}\n\nVisit the app to test. The workflow also ran smoke checks and API integration tests.`
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: pr, body })
+            }

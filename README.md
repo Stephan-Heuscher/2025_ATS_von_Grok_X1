@@ -89,6 +89,15 @@ Note about deploy previews and CI
 
 This repository uses an Azure Static Web Apps CI/CD workflow that runs on pushes to `main` and on pull requests. The workflow will deploy a preview environment for pull requests (preview URL is provided in the workflow logs) and runs both a frontend smoke check and API integration tests.
 
+PR preview and health endpoint
+--------------------------------
+
+Every pull request gets a preview deployment. The workflow will post a comment on the PR with the preview URL once the deployment completes — the preview is smoke-checked before the comment is posted. The API exposes a simple health endpoint at `/api/health` which the workflow uses for the smoke check.
+
+Preview workflow runs and status can be inspected on the Actions page for this repository.
+
+[![PR previews (actions)](https://github.com/Stephan-Heuscher/2025_ATS_von_Grok_X1/actions/workflows/azure-static-web-apps-main.yml/badge.svg?event=pull_request)](https://github.com/Stephan-Heuscher/2025_ATS_von_Grok_X1/actions/workflows/azure-static-web-apps-main.yml)
+
 
 ## Frontend Code
 
