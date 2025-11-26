@@ -1,10 +1,25 @@
-import Dashboard from './pages/Dashboard'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { IssuesProvider } from './context/IssuesContext'
+import Layout from './components/Layout'
+import DashboardPage from './pages/DashboardPage'
+import IssuesListPage from './pages/IssuesListPage'
+import CreateIssuePage from './pages/CreateIssuePage'
+import SettingsPage from './pages/SettingsPage'
 
 function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Dashboard />
-    </div>
+    <BrowserRouter>
+      <IssuesProvider>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/issues" element={<IssuesListPage />} />
+            <Route path="/create" element={<CreateIssuePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </Layout>
+      </IssuesProvider>
+    </BrowserRouter>
   )
 }
 
